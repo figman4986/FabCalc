@@ -120,12 +120,12 @@ No photo data exists in this FabCalc tree. An age-gated startup sweep now delete
 
 ## 5. Test Coverage Matrix
 
-### JVM test files (17 files, 135 passing tests)
+### JVM test files (17 files, 136 passing tests)
 
 | Test class/file | Count | Purpose |
 |---|---:|---|
 | `BendAllowanceMathTest` | 12 | Bend allowance/setback/deduction formulas, extremes, chain totals, validation, cross-check, geometry, unit agnosticism, presets. |
-| `CalculatorViewModelTest` | 7 | Calculator input focus, implicit denominator, operator replacement, left-to-right evaluation, divide-by-zero, clear, π, and nine-digit limit. |
+| `CalculatorViewModelTest` | 8 | Calculator input focus, implicit denominator, invalid digit rejection, operator replacement, left-to-right evaluation, divide-by-zero, clear, π, and nine-digit limit. |
 | `CircleDividerMathTest` | 12 | Diameter conversion, geometric relationships, division bounds, start-angle wrapping, trig rounding/non-finite conversion. |
 | `ConverterFormatTest` | 7 | Number formatting, tiny/large values, inch fractions, feet/inches, DMS. |
 | `ConverterMathTest` | 11 | Exact conversion factors, affine temperature conversion, round trips across categories/ranges/defaults. |
@@ -143,7 +143,7 @@ No photo data exists in this FabCalc tree. An age-gated startup sweep now delete
 | `WireLibraryFilterTest` | 18 | Metal/process/search filtering, combined predicates, order and grouping. |
 | `WireSizeNormalizationTest` | 11 | Common/custom unit normalization, display, and round trips. |
 
-The original suite had 128 tests across 16 reports. WS-3 added six green JVM tests; one decision follow-up now explicitly tests numerator-only input as an integer. The invalid-digit expectation probe remains a documented mismatch, so the resulting suite has 135 passing tests across 17 reports.
+The original suite had 128 tests across 16 reports. WS-3 added six green JVM tests and the approved decision follow-ups add two tests (numerator-only implicit denominator and invalid-digit rejection), for 136 passing tests across 17 reports.
 
 ### Instrumented tests (5 files; emulator executed)
 
@@ -160,7 +160,7 @@ An earlier supplied context said five instrumented suites had never executed; th
 ### Coverage map / gaps
 
 - Covered pure domain: `Fraction`, `ResultFormat`, `MeasurementParser` subset, `OffsetMath`, `CircleDividerMath`, `BendAllowanceMath`, `DiagramLayout`, converter math/format/catalog, gauge tables, wire filter/hash/size, duplicate decision, and structural migration SQL.
-- No tests: out-of-range `Digit` rejection (defined-correct is no-op; actual accepts it), history grouping/timestamp generation, the `SettingsRepository` IOException catch branch, `WireTags` transformations, PDF renderer/viewer lifecycle, or Compose UI interactions/error presentation. Numerator-only input now has an explicit implicit-denominator test.
+- No tests: history grouping/timestamp generation, the `SettingsRepository` IOException catch branch, `WireTags` transformations, PDF renderer/viewer lifecycle, or Compose UI interactions/error presentation. Numerator-only and invalid-digit contracts now have JVM tests.
 - Wire-library query behavior is not comprehensively covered; the device migration test checks migration plus a simple insert/count. No test covers the production DB singleton/open path or an upgrade from v1 to current.
 - Date/time-zone and DST audit for weld-log date grouping is not applicable because no such date logic exists. History timestamp rendering uses default locale/time zone (`DateFormat.getDateTimeInstance`) and has no timezone/DST tests.
 - Saveable slot key uniqueness is covered, but actual restoration of screen state through rotation/process death is not. Many Compose state values use `rememberSaveable`; some dialog/import/viewer state uses plain `remember` and is intentionally transient or could be lost on recreation. No UI-state restoration test exists.
@@ -183,7 +183,7 @@ Ordered by data-loss risk first, then failure likelihood and current coverage ga
 
 1. History DAO/repository tests now cover insertion, Flow emissions, find-by-id, delete, clear, and equal-timestamp order on the emulator. Query orders by timestamp only; current emulator returns newer insertion first, but SQL does not explicitly specify a secondary tie-break, so deterministic order across SQLite versions remains a review point.
 2. Settings DataStore tests now cover all AppSettings fields, unknown enum/unit values, empty-unit fallback, active-unit coercion, repository recreation, and rapid sequential writes. The IOException-to-defaults branch is not directly covered: the repository hardwires a process-wide preferencesDataStore delegate initialized by the app Application; injecting an IOException after initialization would require a production seam or a fresh target process. The test did not corrupt the app's live preferences file to force this branch.
-3. Calculator tests cover focus, numerator-only implicit denominator, operator replacement, left-to-right evaluation, divide-by-zero, clear, π and max digits. The approved numerator-only decision matches existing behavior; only `Digit(12)` remains mismatched. Remaining transition edges (sign behavior, decimal input, empty-operator) can be added after decision on invalid digit handling.
+3. Calculator tests cover focus, numerator-only implicit denominator, invalid digit rejection, operator replacement, left-to-right evaluation, divide-by-zero, clear, π and max digits. The approved numerator-only decision matches existing behavior. The approved invalid-digit guard now rejects values outside 0–9. Remaining transition edges (sign behavior, decimal input, empty-operator) are still untested.
 4. Add Compose UI tests for each destructive confirmation, PDF import/cancel/duplicate flows, edit tags, viewer error/remove, history grouping/detail/delete/clear, and history-disabled retention semantics.
 5. Add rotation/process recreation tests for selected tool, inputs, selected filters/viewer page, active dialog/import state, and settings overlay. Distinguish durable model state from intentionally transient dialog state.
 6. Test PDF renderer open/close behavior, missing/corrupt files, rapid page changes, cache limits, zoom rerender, and cancellation/disposal while rendering.
@@ -280,9 +280,11 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - After WS-2, JVM tests remained at **128** and emulator instrumented tests passed **21 tests**, zero failures/errors/skips.
 - WS-3 added six passing JVM calculator transition tests. Test-first probes found numerator-only input returns `3` (now approved as intended) and `Digit(12)` is accepted (still unresolved). No production behavior was changed.
 - After WS-3, JVM tests passed **134 tests** and connected Android tests passed **21 tests**, zero failures/errors/skips.
-- Decision 1 follow-up adds one JVM assertion for numerator-only → whole number and updates the stale `FractionInput.toFraction()` documentation; parser behavior already conformed. JVM suite is now **135 tests**.
+- Decision 1 follow-up adds one JVM assertion for numerator-only → whole number and updates the stale `FractionInput.toFraction()` documentation; parser behavior already conformed. JVM suite became **135 tests**.
+- Decision 2 adds a JVM guard test and a single `0..9` handler check; invalid keys are ignored before operand state is modified. JVM suite is now **136 tests**.
 - WS-4 distinguishes delete rollback copies with `.staging-delete-<UUID>.pdf`; the startup sweep pattern covers both staging forms. The first pattern test caught an extra hyphen in the generated delete-backup name, which kept it outside the accepted pattern; the name construction was corrected and the expanded emulator case now passes for valid/malformed names plus reference and age gates. No migration changed.
 - After WS-4, JVM tests remain **134** and emulator instrumented tests pass **22**, zero failures/errors/skips.
+- After approved decisions 1–2, JVM tests pass **136** and emulator instrumented tests remain **22**, zero failures/errors/skips.
 
 ### Deferred from this phase
 

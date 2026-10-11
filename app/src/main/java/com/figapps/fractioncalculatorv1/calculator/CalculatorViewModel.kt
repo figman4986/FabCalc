@@ -39,6 +39,7 @@ class CalculatorViewModel : ViewModel() {
     // --- input handlers -------------------------------------------------------
 
     private fun inputDigit(digit: Int): CalculatorState {
+        if (digit !in 0..9) return state
         val base = baseState()
         // Typing a digit replaces a constant operand that was just inserted.
         val current = if (base.current.constant != null) {

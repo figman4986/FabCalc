@@ -107,4 +107,16 @@ class CalculatorViewModelTest {
         assertEquals("123456789", viewModel.state.current.whole)
     }
 
+    @Test
+    fun digitKeysOutsideZeroThroughNineAreIgnored() {
+        val viewModel = CalculatorViewModel()
+        val initial = viewModel.state
+
+        viewModel.onKey(CalculatorKey.Digit(-1))
+        viewModel.onKey(CalculatorKey.Digit(10))
+        viewModel.onKey(CalculatorKey.Digit(12))
+
+        assertEquals(initial, viewModel.state)
+    }
+
 }
