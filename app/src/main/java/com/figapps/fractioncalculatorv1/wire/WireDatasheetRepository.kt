@@ -136,7 +136,7 @@ class WireDatasheetRepository(
     suspend fun delete(entity: WireDatasheet) = withContext(Dispatchers.IO) {
         val file = fileFor(entity.fileName)
         val wasDirectory = file.isDirectory
-        val backup = if (file.isFile) stagedFile().also { file.copyTo(it) } else null
+        val backup = if (file.isFile) deletionBackupFile().also { file.copyTo(it) } else null
 
         if (file.exists() && !file.delete()) {
             backup?.delete()
@@ -183,11 +183,14 @@ class WireDatasheetRepository(
 
     fun stagedFile(): File = File(directory(), "$STAGED_FILE_PREFIX${UUID.randomUUID()}.pdf")
 
+    internal fun deletionBackupFile(): File =
+        File(directory(), "${STAGED_FILE_PREFIX}delete-${UUID.randomUUID()}.pdf")
+
     companion object {
         private const val DIRECTORY = "wireDatasheets"
         internal const val STAGED_FILE_PREFIX = ".staging-"
         internal const val STAGED_FILE_MAX_AGE_MILLIS = 24 * 60 * 60 * 1000L
-        private val STAGED_FILE_PATTERN = Regex("^\\.staging-[0-9a-fA-F-]{36}\\.pdf$")
+        private val STAGED_FILE_PATTERN = Regex("^\\.staging-(?:delete-)?[0-9a-fA-F-]{36}\\.pdf$")
     }
 
     private fun looksLikePdf(source: Uri): Boolean = runCatching {

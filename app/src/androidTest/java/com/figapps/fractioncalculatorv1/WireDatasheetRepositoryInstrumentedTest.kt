@@ -279,6 +279,34 @@ class WireDatasheetRepositoryInstrumentedTest {
         assertTrue("DB check failure must disable sweep", old.exists())
     }
 
+    @Test
+    fun cleanupMatchesStagingAndDeleteBackupNamesButRejectsMalformedNames() = runBlocking {
+        val now = System.currentTimeMillis()
+        val staleStage = stagedFile().apply {
+            writeBytes(PDF)
+            setLastModified(now - WireDatasheetRepository.STAGED_FILE_MAX_AGE_MILLIS - 1)
+        }
+        val staleDeleteBackup = repository.deletionBackupFile().apply {
+            writeBytes(PDF)
+            setLastModified(now - WireDatasheetRepository.STAGED_FILE_MAX_AGE_MILLIS - 1)
+        }
+        val referencedDeleteBackup = repository.deletionBackupFile().apply {
+            writeBytes(PDF)
+            setLastModified(now - WireDatasheetRepository.STAGED_FILE_MAX_AGE_MILLIS - 1)
+        }
+        insertEntry(referencedDeleteBackup.name)
+        val malformed = File(repository.directory(), ".staging-delete-not-a-uuid.pdf").apply {
+            writeBytes(PDF)
+            setLastModified(now - WireDatasheetRepository.STAGED_FILE_MAX_AGE_MILLIS - 1)
+        }
+
+        repository.sweepStagedFiles(now)
+        assertFalse(staleStage.exists())
+        assertFalse(staleDeleteBackup.exists())
+        assertTrue("Room references protect deletion recovery copy", referencedDeleteBackup.exists())
+        assertTrue("unknown staging names are not treated as temp files", malformed.exists())
+    }
+
     private suspend fun insertEntry(fileName: String): WireDatasheet {
         val row = WireDatasheet(
             fileName = fileName,
