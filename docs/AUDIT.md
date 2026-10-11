@@ -120,7 +120,7 @@ No photo data exists in this FabCalc tree. An age-gated startup sweep now delete
 
 ## 5. Test Coverage Matrix
 
-### JVM test files (16 files, 128 tests)
+### JVM test files (17 files, 134 passing tests)
 
 | Test class/file | Count | Purpose |
 |---|---:|---|
