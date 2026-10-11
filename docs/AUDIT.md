@@ -88,9 +88,9 @@ MainActivity
 | Circle divider | Implemented | `CircleDividerScreen`, `CircleDividerMath`, `CircleDividerDiagram`. N equal divisions, start angle, points/chord/arc/areas, optional bolt pattern. | `CircleDividerMathTest`; no gesture/UI test. |
 | Unit converter | Implemented | `UnitConverterScreen`, `ConverterCatalog`, `ConverterEngine`, `ConverterFormat`, `SheetMetalGauge`. Length, mass, temperature, pressure, force, torque, area, volume, angle, and gauge tables. Remembers unit pairs. | `ConverterMathTest`, `ConverterFormatTest`, `SheetMetalGaugeTest`; no UI/persistence test. |
 | Bend allowance / flat pattern | Implemented | `BendAllowanceScreen`, `BendAllowanceMath`, `BendDiagram`; multi-bend chain and leg-length cross-check. | `BendAllowanceMathTest`; no UI-state/validation test. |
-| Wire datasheet PDF library | Implemented | Tool menu → `WireLibraryScreen`, `WireDatasheetRepository`, Room entity/DAO, `WireLibraryFilter`, `WireViewerScreen`. OpenDocument picker, PDF header check/copy/hash, metadata tags, filters, viewer/pinch zoom, edit/delete. Local/offline. | Hash, duplicate, filter, size, migration-DDL JVM tests; 15-case emulator repository/filesystem/Room suite. No Compose UI tests. |
-| Calculation history | Implemented | History overlay via app bar/menu; `HistoryScreen`, `HistoryDetailDialog`, `HistoryRepository`, `HistoryDao`. Per-tool groups; detail; delete one or clear all. | No repository/DAO/UI history behavior test. Migration integration test verifies history preservation on emulator. |
-| Settings | Implemented | Settings overlay → `SettingsScreen`, `SettingsRepository`, DataStore. Precision, unit availability, history toggle, theme, haptics, keep-awake. | Only `AppSettings.primaryUnit` fallback and measurement validation are covered; DataStore read/write/corruption not tested. |
+| Wire datasheet PDF library | Implemented | Tool menu → `WireLibraryScreen`, `WireDatasheetRepository`, Room entity/DAO, `WireLibraryFilter`, `WireViewerScreen`. OpenDocument picker, PDF header check/copy/hash, metadata tags, filters, viewer/pinch zoom, edit/delete. Local/offline. | Hash, duplicate, filter, size, migration-DDL JVM tests; 16-case emulator repository/filesystem/Room suite; Compose UI tests cover delete confirmation, import cancel/duplicate, and viewer missing-file recovery. |
+| Calculation history | Implemented | History overlay via app bar/menu; `HistoryScreen`, `HistoryDetailDialog`, `HistoryRepository`, `HistoryDao`. Per-tool groups; detail; delete one or clear all. | In-memory Room repository tests and Compose tests for grouping/detail, single-delete confirmation, and clear-all confirmation. |
+| Settings | Implemented | Settings overlay → `SettingsScreen`, `SettingsRepository`, DataStore. Precision, unit availability, history toggle, theme, haptics, keep-awake. | Serialized preference round-trip, unknown enum/unit coercion, invalid-file defaults, repository recreation and sequential writes; no SettingsScreen UI tests. |
 | Welder display OCR | **Absent** | No OCR library/dependency, scanner route, camera component, or OCR code. | None. |
 | Weld entry logging with photos | **Absent** | No weld-entry screen/entity, camera/picker flow for photos, photo lifecycle, or photo references. | None. |
 | EAV custom weld fields / custom-field manager | **Absent** | No field definitions/values tables or management UI. Wire PDF tags are fixed schema fields, not EAV. | None. |
@@ -145,22 +145,23 @@ No photo data exists in this FabCalc tree. An age-gated startup sweep now delete
 
 The original suite had 128 tests across 16 reports. WS-3 added six green JVM tests and the approved decision follow-ups add two tests (numerator-only implicit denominator and invalid-digit rejection), for 136 passing tests across 17 reports.
 
-### Instrumented tests (5 files; emulator executed)
+### Instrumented tests (6 files; emulator executed)
 
 | Test class/file | Purpose | Execution status |
 |---|---|---|
 | `ExampleInstrumentedTest` | Asserts target package name. | Emulator PASS (1 test). |
+| `HistoryAndWireLibraryComposeTest` | Compose v2 UI tests for history deletion/clear confirmations, grouping/detail, wire deletion confirmation, viewer missing-PDF recovery, and PDF import cancel/duplicate. | Emulator PASS (6 tests); in-memory Room; no sleeps or ignored/flaky cases. |
 | `WireDatabaseMigrationInstrumentedTest` | Builds a v2 SQLite database with a history row, opens through production migrations, verifies history preservation and wire-table insert/count on device. | Emulator PASS (1 test). |
 | `HistoryRepositoryInstrumentedTest` | In-memory Room tests for record/observe/find present+absent, equal-timestamp ordering, single delete, clear, and Flow updates. | Emulator PASS (3 tests). |
 | `SettingsRepositoryInstrumentedTest` | Real serialized DataStore round-trip, all settings fields, unknown enum/unit coercion, active-unit fallback, rapid writes, and unreadable-file IOException fallback. | Emulator PASS (2 tests). |
 | `WireDatasheetRepositoryInstrumentedTest` | 16 real Room/filesystem tests: default ContentResolver path, valid/non-PDF/missing/invalid import, thrown/short streams, duplicate retention, commit insert failure and cancellation, file+row deletion, missing-file deletion, false File.delete outcome, transaction rollback/restoration, cleanup naming/age/reference/DB-failure behavior. | Emulator PASS (16 tests). |
 
-An earlier supplied context said five instrumented suites had never executed; the original source then contained two suites. The repository, history, and settings suites are now also present, for five instrumented test classes total. No Compose test API (`createComposeRule`, `createAndroidComposeRule`, `StandardTestDispatcher`, immediate test dispatcher) is used in these tests.
+An earlier supplied context said five instrumented suites had never executed; the original source then contained two suites. Repository, history, settings, and Compose UI suites are now also present, for six instrumented test classes total. Compose coverage uses the Compose v2 `createComposeRule` API and waits through `waitForIdle`/bounded `waitUntil`; no `StandardTestDispatcher`, sleeps, or `@Ignore` quarantine is used.
 
 ### Coverage map / gaps
 
 - Covered pure domain: `Fraction`, `ResultFormat`, `MeasurementParser` subset, `OffsetMath`, `CircleDividerMath`, `BendAllowanceMath`, `DiagramLayout`, converter math/format/catalog, gauge tables, wire filter/hash/size, duplicate decision, and structural migration SQL.
-- No tests: history grouping/timestamp generation, `WireTags` transformations, PDF renderer/viewer lifecycle, or Compose UI interactions/error presentation. Numerator-only and invalid-digit contracts have JVM tests; DataStore IO fallback has an instrumented corruption test.
+- No tests: history timestamp generation/time-zone behavior, `WireTags` transformations, PDF renderer lifecycle/zoom, edit-tags UI, settings UI, history-disabled UI state, and rotation/process restoration. Numerator-only and invalid-digit contracts have JVM tests; DataStore IO fallback has an instrumented corruption test.
 - Wire-library query behavior is not comprehensively covered; the device migration test checks migration plus a simple insert/count. No test covers the production DB singleton/open path or an upgrade from v1 to current.
 - Date/time-zone and DST audit for weld-log date grouping is not applicable because no such date logic exists. History timestamp rendering uses default locale/time zone (`DateFormat.getDateTimeInstance`) and has no timezone/DST tests.
 - Saveable slot key uniqueness is covered, but actual restoration of screen state through rotation/process death is not. Many Compose state values use `rememberSaveable`; some dialog/import/viewer state uses plain `remember` and is intentionally transient or could be lost on recreation. No UI-state restoration test exists.
@@ -184,7 +185,7 @@ Ordered by data-loss risk first, then failure likelihood and current coverage ga
 1. History DAO/repository tests cover insertion, Flow emissions, find-by-id, delete, clear, and equal-timestamp order on the emulator. The approved deterministic order is now explicit in SQL: timestamp descending, then ID descending.
 2. Settings DataStore tests cover all AppSettings fields, unknown enum/unit values, empty-unit fallback, active-unit coercion, repository recreation, rapid sequential writes, and a corrupt preferences file returning defaults through the approved injected factory. A separate default-constructor path remains covered by the settings round-trip scenario.
 3. Calculator tests cover focus, numerator-only implicit denominator, invalid digit rejection, operator replacement, left-to-right evaluation, divide-by-zero, clear, π and max digits. The approved numerator-only decision matches existing behavior. The approved invalid-digit guard now rejects values outside 0–9. Remaining transition edges (sign behavior, decimal input, empty-operator) are still untested.
-4. Add Compose UI tests for each destructive confirmation, PDF import/cancel/duplicate flows, edit tags, viewer error/remove, history grouping/detail/delete/clear, and history-disabled retention semantics.
+4. Compose tests now cover history delete/clear confirmation, grouping/detail, wire delete confirmation, PDF import cancellation/deduplication, and missing-PDF viewer recovery. Edit-tags UI, history-disabled behavior, and rotation/restoration remain gaps.
 5. Add rotation/process recreation tests for selected tool, inputs, selected filters/viewer page, active dialog/import state, and settings overlay. Distinguish durable model state from intentionally transient dialog state.
 6. Test PDF renderer open/close behavior, missing/corrupt files, rapid page changes, cache limits, zoom rerender, and cancellation/disposal while rendering.
 
@@ -286,7 +287,8 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - WS-4 distinguishes delete rollback copies with `.staging-delete-<UUID>.pdf`; the startup sweep pattern covers both staging forms. The first pattern test caught an extra hyphen in the generated delete-backup name, which kept it outside the accepted pattern; the name construction was corrected and the expanded emulator case now passes for valid/malformed names plus reference and age gates. No migration changed.
 - After WS-4, JVM tests remain **134** and emulator instrumented tests pass **22**, zero failures/errors/skips.
 - After approved decisions 1–2, JVM tests pass **136** and emulator instrumented tests remain **22**, zero failures/errors/skips.
-- Decision 3 post-commit counts were 136 JVM / 22 instrumented, all green. Decision 4 added the DataStore factory with the previous singleton factory as default plus a corrupt-file IOException test. Final current totals: 136 JVM / 23 instrumented.
+- Decision 3 post-commit counts were 136 JVM / 22 instrumented, all green. Decision 4 added the DataStore factory with the previous singleton factory as default plus a corrupt-file IOException test; post-commit total was 136 / 23.
+- WS-5 adds six passing Compose UI tests using `createComposeRule` v2, in-memory Room, `waitForIdle`, and bounded `waitUntil`; none required quarantine. No production code or manifest was changed for UI tests. Current totals are **136 JVM / 29 instrumented**.
 
 ### Deferred from this phase
 
