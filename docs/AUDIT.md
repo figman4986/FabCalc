@@ -120,7 +120,7 @@ No photo data exists in this FabCalc tree. An age-gated startup sweep now delete
 
 ## 5. Test Coverage Matrix
 
-### JVM test files (17 files, 136 passing tests)
+### JVM test files (18 files, 163 passing tests in the fresh CI-preparation run)
 
 | Test class/file | Count | Purpose |
 |---|---:|---|
@@ -288,8 +288,9 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - After WS-4, JVM tests remain **134** and emulator instrumented tests pass **22**, zero failures/errors/skips.
 - After approved decisions 1–2, JVM tests pass **136** and emulator instrumented tests remain **22**, zero failures/errors/skips.
 - Decision 3 post-commit counts were 136 JVM / 22 instrumented, all green. Decision 4 added the DataStore factory with the previous singleton factory as default plus a corrupt-file IOException test; post-commit total was 136 / 23.
-- WS-5 adds six passing Compose UI tests using `createComposeRule`, in-memory Room, `waitForIdle`, and bounded `waitUntil`; none required quarantine. No production code or manifest was changed for UI tests. Current totals are **136 JVM / 29 instrumented**.
+- WS-5 adds six passing Compose UI tests using `createComposeRule`, in-memory Room, `waitForIdle`, and bounded `waitUntil`; none required quarantine. No production code or manifest was changed for UI tests.
 - WS-6 clarifies README test instructions: JVM tests need no device; instrumented/Compose tests require a booted emulator or connected device visible to `adb devices`. No feature claims or commands beyond the existing tasks were added.
+- A fresh non-cached CI-preparation run (`./gradlew :app:testDebugUnitTest --rerun-tasks`) generated 18 JUnit XML reports totaling **163 tests**, all passing. This supersedes the previously reported 136 total, which does not match the freshly regenerated report set. The connected suite remains **29 tests**, all passing.
 
 ### Deferred from this phase
 
