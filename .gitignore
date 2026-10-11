@@ -9,7 +9,6 @@ local.properties
 /app/release/
 *.apk
 *.aab
-/docs/AUDIT.md
 
 # Signing keys and related secret material
 *.jks
