@@ -144,21 +144,22 @@ No photo data exists in this FabCalc tree. An age-gated startup sweep now delete
 
 Count was verified from generated `app/build/test-results/testDebugUnitTest/TEST-*.xml`; all 16 reports have zero failures/errors/skips.
 
-### Instrumented tests (3 files; emulator executed)
+### Instrumented tests (4 files; emulator executed)
 
 | Test class/file | Purpose | Execution status |
 |---|---|---|
 | `ExampleInstrumentedTest` | Asserts target package name. | Emulator PASS (1 test). |
 | `WireDatabaseMigrationInstrumentedTest` | Builds a v2 SQLite database with a history row, opens through production migrations, verifies history preservation and wire-table insert/count on device. | Emulator PASS (1 test). |
+| `HistoryRepositoryInstrumentedTest` | In-memory Room tests for record/observe/find present+absent, equal-timestamp ordering, single delete, clear, and Flow updates. | Emulator PASS (3 tests). |
 | `WireDatasheetRepositoryInstrumentedTest` | 15 real Room/filesystem tests: default ContentResolver path, valid/non-PDF/missing/invalid import, thrown/short streams, duplicate retention, commit insert failure and cancellation, file+row deletion, missing-file deletion, false File.delete outcome, transaction rollback/restoration, cleanup age/reference/DB-failure behavior. | Emulator PASS (15 tests). |
 
-An earlier supplied context said five instrumented suites had never executed; the original source then contained two suites. This phase adds the third suite, `WireDatasheetRepositoryInstrumentedTest`; all three suites have now executed on an API 36 emulator. No Compose test API (`createComposeRule`, `createAndroidComposeRule`, `StandardTestDispatcher`, immediate test dispatcher) is used in these tests.
+An earlier supplied context said five instrumented suites had never executed; the original source then contained two suites. The repository and history suites are now also present, for four instrumented test classes total. No Compose test API (`createComposeRule`, `createAndroidComposeRule`, `StandardTestDispatcher`, immediate test dispatcher) is used in these tests.
 
 ### Coverage map / gaps
 
 - Covered pure domain: `Fraction`, `ResultFormat`, `MeasurementParser` subset, `OffsetMath`, `CircleDividerMath`, `BendAllowanceMath`, `DiagramLayout`, converter math/format/catalog, gauge tables, wire filter/hash/size, duplicate decision, and structural migration SQL.
-- No tests: `CalculatorViewModel` state transitions, `FractionInput`/`CalculatorState` edge cases, history grouping/timestamp generation/repository deletion, DataStore persistence and recovery, `WireTags` transformations, PDF renderer/viewer lifecycle, or Compose UI interactions/error presentation. Actual file stage/duplicate/commit/delete/sweep paths now have emulator tests via the `PdfContentAccess` seam and real Room/filesystem.
-- Room query correctness is not covered locally; the device migration test checks only migration plus a simple insert/count. No test covers the production DB singleton/open path or an upgrade from v1 to current.
+- No tests: `CalculatorViewModel` state transitions, `FractionInput`/`CalculatorState` edge cases, history grouping/timestamp generation, DataStore persistence and recovery, `WireTags` transformations, PDF renderer/viewer lifecycle, or Compose UI interactions/error presentation. Actual history insert/find/delete/clear and file stage/duplicate/commit/delete/sweep paths have emulator tests using Room/filesystem.
+- Wire-library query behavior is not comprehensively covered; the device migration test checks migration plus a simple insert/count. No test covers the production DB singleton/open path or an upgrade from v1 to current.
 - Date/time-zone and DST audit for weld-log date grouping is not applicable because no such date logic exists. History timestamp rendering uses default locale/time zone (`DateFormat.getDateTimeInstance`) and has no timezone/DST tests.
 - Saveable slot key uniqueness is covered, but actual restoration of screen state through rotation/process death is not. Many Compose state values use `rememberSaveable`; some dialog/import/viewer state uses plain `remember` and is intentionally transient or could be lost on recreation. No UI-state restoration test exists.
 - The full build is not established by the unit-test task alone. User context says debug/release assemble passed previously; this audit did not independently run assemble tasks.
@@ -178,7 +179,7 @@ Ordered by data-loss risk first, then failure likelihood and current coverage ga
 
 ### P1: existing app correctness with no current tests
 
-1. Add DAO/repository tests for history insertion ordering, observation updates, find-by-id, individual delete, clear, and timestamp ordering under ties.
+1. History DAO/repository tests now cover insertion, Flow emissions, find-by-id, delete, clear, and equal-timestamp order on the emulator. Query orders by timestamp only; current emulator returns newer insertion first, but SQL does not explicitly specify a secondary tie-break, so deterministic order across SQLite versions remains a review point.
 2. Add tests for settings DataStore persistence, invalid/unknown enum names, empty unit sets, active-unit coercion, malformed converter pairs, and IOException fallback. Verify rapid repeated writes and recreation.
 3. Add `CalculatorViewModel` transition tests for partial inputs, sign/fraction focus, operator replacement, left-to-right semantics, divide-by-zero, clear behavior, constants, and max digits.
 4. Add Compose UI tests for each destructive confirmation, PDF import/cancel/duplicate flows, edit tags, viewer error/remove, history grouping/detail/delete/clear, and history-disabled retention semantics.
@@ -271,7 +272,8 @@ Staging uses exact `.staging-<UUID>.pdf` names. `STAGED_FILE_PREFIX` and `STAGED
 - `HistoryDatabase.exportSchema` is true; KSP writes to `app/schemas` via `room.schemaLocation`; the schema directory is configured as androidTest assets for migration tooling.
 - Generated snapshot: `app/schemas/com.figapps.fractioncalculatorv1.history.HistoryDatabase/3.json` (schema version 3; history and wire_datasheets entities and all four indices represented).
 - `app/src/main/java/com/figapps/fractioncalculatorv1/history/HistoryDatabase.kt` migration definitions were not modified. The final migration instrumented test passed after enabling schema export.
-- Final required runs: `bash gradlew :app:testDebugUnitTest` passed, **128 tests**, zero failures/errors/skips across 16 test-report classes. `bash gradlew :app:connectedDebugAndroidTest` passed, **17 tests**, zero failures/errors/skips: `ExampleInstrumentedTest` (1), `WireDatabaseMigrationInstrumentedTest` (1), and `WireDatasheetRepositoryInstrumentedTest` (15).
+- After WS-1, `bash gradlew :app:testDebugUnitTest` remains at **128 tests**; `bash gradlew :app:connectedDebugAndroidTest` passed **20 tests**, zero failures/errors/skips: Example (1), migration (1), history (3), wire repository (15).
+- WS-1 history coverage added in-memory Room instrumentation: 3 tests passed for insert/observe/find, equal-timestamp order, and delete/clear emissions. In-memory Room isolates test state while retaining actual DAO SQL and Room invalidation behavior.
 
 ### Deferred from this phase
 
