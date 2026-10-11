@@ -181,7 +181,7 @@ Ordered by data-loss risk first, then failure likelihood and current coverage ga
 
 ### P1: existing app correctness with no current tests
 
-1. History DAO/repository tests now cover insertion, Flow emissions, find-by-id, delete, clear, and equal-timestamp order on the emulator. Query orders by timestamp only; current emulator returns newer insertion first, but SQL does not explicitly specify a secondary tie-break, so deterministic order across SQLite versions remains a review point.
+1. History DAO/repository tests cover insertion, Flow emissions, find-by-id, delete, clear, and equal-timestamp order on the emulator. The approved deterministic order is now explicit in SQL: timestamp descending, then ID descending.
 2. Settings DataStore tests now cover all AppSettings fields, unknown enum/unit values, empty-unit fallback, active-unit coercion, repository recreation, and rapid sequential writes. The IOException-to-defaults branch is not directly covered: the repository hardwires a process-wide preferencesDataStore delegate initialized by the app Application; injecting an IOException after initialization would require a production seam or a fresh target process. The test did not corrupt the app's live preferences file to force this branch.
 3. Calculator tests cover focus, numerator-only implicit denominator, invalid digit rejection, operator replacement, left-to-right evaluation, divide-by-zero, clear, π and max digits. The approved numerator-only decision matches existing behavior. The approved invalid-digit guard now rejects values outside 0–9. Remaining transition edges (sign behavior, decimal input, empty-operator) are still untested.
 4. Add Compose UI tests for each destructive confirmation, PDF import/cancel/duplicate flows, edit tags, viewer error/remove, history grouping/detail/delete/clear, and history-disabled retention semantics.
@@ -282,6 +282,7 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - After WS-3, JVM tests passed **134 tests** and connected Android tests passed **21 tests**, zero failures/errors/skips.
 - Decision 1 follow-up adds one JVM assertion for numerator-only → whole number and updates the stale `FractionInput.toFraction()` documentation; parser behavior already conformed. JVM suite became **135 tests**.
 - Decision 2 adds a JVM guard test and a single `0..9` handler check; invalid keys are ignored before operand state is modified. JVM suite is now **136 tests**.
+- Decision 3 adds `id DESC` as the history query tie-break; the existing equal-timestamp in-memory Room test asserts newer ID first. No schema or migration changed.
 - WS-4 distinguishes delete rollback copies with `.staging-delete-<UUID>.pdf`; the startup sweep pattern covers both staging forms. The first pattern test caught an extra hyphen in the generated delete-backup name, which kept it outside the accepted pattern; the name construction was corrected and the expanded emulator case now passes for valid/malformed names plus reference and age gates. No migration changed.
 - After WS-4, JVM tests remain **134** and emulator instrumented tests pass **22**, zero failures/errors/skips.
 - After approved decisions 1–2, JVM tests pass **136** and emulator instrumented tests remain **22**, zero failures/errors/skips.

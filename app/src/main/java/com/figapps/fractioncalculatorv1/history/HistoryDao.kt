@@ -12,7 +12,7 @@ interface HistoryDao {
     @Insert
     suspend fun insert(entry: HistoryEntry): Long
 
-    @Query("SELECT * FROM history ORDER BY timestamp DESC")
+    @Query("SELECT * FROM history ORDER BY timestamp DESC, id DESC")
     fun observeAll(): Flow<List<HistoryEntry>>
 
     @Query("SELECT * FROM history WHERE id = :id")
