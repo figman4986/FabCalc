@@ -25,15 +25,24 @@ import java.io.IOException
  */
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore("settings")
 
+fun interface SettingsDataStoreFactory {
+    fun create(applicationContext: Context): DataStore<Preferences>
+}
+
+private val defaultSettingsDataStoreFactory = SettingsDataStoreFactory { it.settingsDataStore }
+
 /**
  * Reactive, persisted store for [AppSettings], backed by Jetpack DataStore Preferences.
  *
  * Missing or corrupt keys always fall back to the [AppSettings] defaults, so the app keeps working
  * even on a fresh install or after a partial write.
  */
-class SettingsRepository(context: Context) {
+class SettingsRepository(
+    context: Context,
+    dataStoreFactory: SettingsDataStoreFactory = defaultSettingsDataStoreFactory,
+) {
 
-    private val dataStore = context.applicationContext.settingsDataStore
+    private val dataStore = dataStoreFactory.create(context.applicationContext)
 
     val settings: Flow<AppSettings> = dataStore.data
         .catch { throwable ->

@@ -3,6 +3,7 @@ package com.figapps.fractioncalculatorv1
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -14,7 +15,12 @@ import com.figapps.fractioncalculatorv1.domain.convert.ConverterCatalog
 import com.figapps.fractioncalculatorv1.domain.convert.UnitSelection
 import com.figapps.fractioncalculatorv1.settings.AppSettings
 import com.figapps.fractioncalculatorv1.settings.SettingsRepository
+import com.figapps.fractioncalculatorv1.settings.SettingsDataStoreFactory
 import com.figapps.fractioncalculatorv1.settings.ThemeMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
@@ -23,10 +29,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.UUID
 
 /** End-to-end tests over the process-wide serialized Preferences DataStore. */
 @RunWith(AndroidJUnit4::class)
 class SettingsRepositoryInstrumentedTest {
+
+    @Test
+    fun unreadablePreferencesFileFallsBackToDefaults() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "settings-io-${UUID.randomUUID()}.preferences_pb")
+        file.writeBytes(byteArrayOf(0xff.toByte(), 0x7f))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = PreferenceDataStoreFactory.create(scope = scope, produceFile = { file })
+        val repository = SettingsRepository(context, SettingsDataStoreFactory { store })
+
+        try {
+            assertEquals(AppSettings(), repository.settings.first())
+        } finally {
+            scope.cancel()
+            file.delete()
+        }
+    }
 
     @Test
     fun serializedSettingsDefaultsRoundTripCoercionAndSequentialWrites() = runBlocking {

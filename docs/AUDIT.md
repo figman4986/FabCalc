@@ -152,7 +152,7 @@ The original suite had 128 tests across 16 reports. WS-3 added six green JVM tes
 | `ExampleInstrumentedTest` | Asserts target package name. | Emulator PASS (1 test). |
 | `WireDatabaseMigrationInstrumentedTest` | Builds a v2 SQLite database with a history row, opens through production migrations, verifies history preservation and wire-table insert/count on device. | Emulator PASS (1 test). |
 | `HistoryRepositoryInstrumentedTest` | In-memory Room tests for record/observe/find present+absent, equal-timestamp ordering, single delete, clear, and Flow updates. | Emulator PASS (3 tests). |
-| `SettingsRepositoryInstrumentedTest` | Real serialized DataStore round-trip, all settings fields, unknown enum/unit coercion, active-unit fallback, rapid sequential writes. | Emulator PASS (1 scenario). IOException fallback branch remains untested; see WS-2 note. |
+| `SettingsRepositoryInstrumentedTest` | Real serialized DataStore round-trip, all settings fields, unknown enum/unit coercion, active-unit fallback, rapid writes, and unreadable-file IOException fallback. | Emulator PASS (2 tests). |
 | `WireDatasheetRepositoryInstrumentedTest` | 16 real Room/filesystem tests: default ContentResolver path, valid/non-PDF/missing/invalid import, thrown/short streams, duplicate retention, commit insert failure and cancellation, file+row deletion, missing-file deletion, false File.delete outcome, transaction rollback/restoration, cleanup naming/age/reference/DB-failure behavior. | Emulator PASS (16 tests). |
 
 An earlier supplied context said five instrumented suites had never executed; the original source then contained two suites. The repository, history, and settings suites are now also present, for five instrumented test classes total. No Compose test API (`createComposeRule`, `createAndroidComposeRule`, `StandardTestDispatcher`, immediate test dispatcher) is used in these tests.
@@ -160,7 +160,7 @@ An earlier supplied context said five instrumented suites had never executed; th
 ### Coverage map / gaps
 
 - Covered pure domain: `Fraction`, `ResultFormat`, `MeasurementParser` subset, `OffsetMath`, `CircleDividerMath`, `BendAllowanceMath`, `DiagramLayout`, converter math/format/catalog, gauge tables, wire filter/hash/size, duplicate decision, and structural migration SQL.
-- No tests: history grouping/timestamp generation, the `SettingsRepository` IOException catch branch, `WireTags` transformations, PDF renderer/viewer lifecycle, or Compose UI interactions/error presentation. Numerator-only and invalid-digit contracts now have JVM tests.
+- No tests: history grouping/timestamp generation, `WireTags` transformations, PDF renderer/viewer lifecycle, or Compose UI interactions/error presentation. Numerator-only and invalid-digit contracts have JVM tests; DataStore IO fallback has an instrumented corruption test.
 - Wire-library query behavior is not comprehensively covered; the device migration test checks migration plus a simple insert/count. No test covers the production DB singleton/open path or an upgrade from v1 to current.
 - Date/time-zone and DST audit for weld-log date grouping is not applicable because no such date logic exists. History timestamp rendering uses default locale/time zone (`DateFormat.getDateTimeInstance`) and has no timezone/DST tests.
 - Saveable slot key uniqueness is covered, but actual restoration of screen state through rotation/process death is not. Many Compose state values use `rememberSaveable`; some dialog/import/viewer state uses plain `remember` and is intentionally transient or could be lost on recreation. No UI-state restoration test exists.
@@ -182,7 +182,7 @@ Ordered by data-loss risk first, then failure likelihood and current coverage ga
 ### P1: existing app correctness with no current tests
 
 1. History DAO/repository tests cover insertion, Flow emissions, find-by-id, delete, clear, and equal-timestamp order on the emulator. The approved deterministic order is now explicit in SQL: timestamp descending, then ID descending.
-2. Settings DataStore tests now cover all AppSettings fields, unknown enum/unit values, empty-unit fallback, active-unit coercion, repository recreation, and rapid sequential writes. The IOException-to-defaults branch is not directly covered: the repository hardwires a process-wide preferencesDataStore delegate initialized by the app Application; injecting an IOException after initialization would require a production seam or a fresh target process. The test did not corrupt the app's live preferences file to force this branch.
+2. Settings DataStore tests cover all AppSettings fields, unknown enum/unit values, empty-unit fallback, active-unit coercion, repository recreation, rapid sequential writes, and a corrupt preferences file returning defaults through the approved injected factory. A separate default-constructor path remains covered by the settings round-trip scenario.
 3. Calculator tests cover focus, numerator-only implicit denominator, invalid digit rejection, operator replacement, left-to-right evaluation, divide-by-zero, clear, π and max digits. The approved numerator-only decision matches existing behavior. The approved invalid-digit guard now rejects values outside 0–9. Remaining transition edges (sign behavior, decimal input, empty-operator) are still untested.
 4. Add Compose UI tests for each destructive confirmation, PDF import/cancel/duplicate flows, edit tags, viewer error/remove, history grouping/detail/delete/clear, and history-disabled retention semantics.
 5. Add rotation/process recreation tests for selected tool, inputs, selected filters/viewer page, active dialog/import state, and settings overlay. Distinguish durable model state from intentionally transient dialog state.
@@ -276,7 +276,7 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - `app/src/main/java/com/figapps/fractioncalculatorv1/history/HistoryDatabase.kt` migration definitions were not modified. The final migration instrumented test passed after enabling schema export.
 - After WS-1, `bash gradlew :app:testDebugUnitTest` remained at **128 tests**; `bash gradlew :app:connectedDebugAndroidTest` passed **20 tests**, zero failures/errors/skips: Example (1), migration (1), history (3), wire repository (15).
 - WS-1 history coverage added in-memory Room instrumentation: 3 tests passed for insert/observe/find, equal-timestamp order, and delete/clear emissions. In-memory Room isolates test state while retaining actual DAO SQL and Room invalidation behavior.
-- WS-2 settings coverage adds one emulator integration scenario over the process-wide serialized DataStore. It snapshots/restores the complete pre-test Preferences map so test values are not retained. The specific IOException catch branch remains a documented blocker; no production seam or unsafe live-file corruption was introduced.
+- WS-2 initially added one emulator integration scenario over the process-wide DataStore and documented the IO isolation blocker. Decision 4 then authorized a factory seam; the new isolated corrupt-file test exercises the IOException-to-defaults path. The default singleton factory remains the constructor default, and the existing default-path round-trip remains green.
 - After WS-2, JVM tests remained at **128** and emulator instrumented tests passed **21 tests**, zero failures/errors/skips.
 - WS-3 added six passing JVM calculator transition tests. Test-first probes found numerator-only input returns `3` (now approved as intended) and `Digit(12)` is accepted (still unresolved). No production behavior was changed.
 - After WS-3, JVM tests passed **134 tests** and connected Android tests passed **21 tests**, zero failures/errors/skips.
@@ -286,6 +286,7 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - WS-4 distinguishes delete rollback copies with `.staging-delete-<UUID>.pdf`; the startup sweep pattern covers both staging forms. The first pattern test caught an extra hyphen in the generated delete-backup name, which kept it outside the accepted pattern; the name construction was corrected and the expanded emulator case now passes for valid/malformed names plus reference and age gates. No migration changed.
 - After WS-4, JVM tests remain **134** and emulator instrumented tests pass **22**, zero failures/errors/skips.
 - After approved decisions 1–2, JVM tests pass **136** and emulator instrumented tests remain **22**, zero failures/errors/skips.
+- Decision 3 post-commit counts were 136 JVM / 22 instrumented, all green. Decision 4 added the DataStore factory with the previous singleton factory as default plus a corrupt-file IOException test. Final current totals: 136 JVM / 23 instrumented.
 
 ### Deferred from this phase
 
