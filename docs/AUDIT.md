@@ -279,7 +279,7 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - WS-1 history coverage added in-memory Room instrumentation: 3 tests passed for insert/observe/find, equal-timestamp order, and delete/clear emissions. In-memory Room isolates test state while retaining actual DAO SQL and Room invalidation behavior.
 - WS-2 initially added one emulator integration scenario over the process-wide DataStore and documented the IO isolation blocker. Decision 4 then authorized a factory seam; the new isolated corrupt-file test exercises the IOException-to-defaults path. The default singleton factory remains the constructor default, and the existing default-path round-trip remains green.
 - After WS-2, emulator instrumented tests passed **21 tests**, zero failures/errors/skips.
-- WS-3 added six passing JVM calculator transition tests. Test-first probes found numerator-only input returns `3` (now approved as intended) and `Digit(12)` is accepted (still unresolved). No production behavior was changed.
+- WS-3 added six passing JVM calculator transition tests. Test-first probes found numerator-only input returns `3` and `Digit(12)` is accepted; decision-phase changes subsequently approved the former and added a guard for the latter.
 - After WS-3, connected Android tests passed **21 tests**, zero failures/errors/skips. JVM test totals in the interim notes are superseded by the fresh current report count.
 - Decision 1 follow-up adds one JVM assertion for numerator-only → whole number and updates the stale `FractionInput.toFraction()` documentation; parser behavior already conformed.
 - Decision 2 adds a JVM guard test and a single `0..9` handler check; invalid keys are ignored before operand state is modified.
@@ -303,3 +303,35 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - End-to-end Android cloud backup and device-transfer restore of Room + DataStore + PDF content; emulator backup was not allowed.
 - Validate Android Settings/account/transport backup opt-in behavior and actual restore UX on supported OEM/API versions.
 - No other current test or build step requires a physical device; the available emulator executed the full checked-in instrumented suite.
+
+## 10. Wire Viewer Indefinite Rendering Bug
+
+### Reproduction fixtures
+
+Both supplied AndroidTest assets were imported through the normal Wire Library OpenDocument picker, tagged, saved, and opened from their persisted rows. Both remained at `Rendering…` for more than five minutes. The largest fixture was deleted from the library and freshly re-imported from the same source; the hang reproduced again.
+
+| Fixture | Source/stored size | Pages | Page 1 PDF MediaBox | Largest embedded raster object | Initial viewer bitmap target |
+|---|---:|---:|---|---:|---:|
+| `12_DW-50.pdf` | 698,262 bytes | 1 | 420.945 × 595.276 pt | 371 × 433 px | 1,344 × 1,901 px (~2.55 MP) |
+| `kobelco-familiarc-dw-50-198872.pdf` | 590,116 bytes | 2 | 540 × 720 pt | 1,326 × 188 px on page 1 | 1,344 × 1,792 px (~2.41 MP) |
+
+These fixtures contain vector/text datasheet content and small embedded images, not scan-resolution pages with tens of millions of pixels. No separate small single-page fixture was provided. The second, smaller, two-page fixture hangs as well, so the reproduction is not limited to large file size or page count. Room rows recorded SHA-256 values `829041aa3df63a7dd62a04f4c586bd35b548bd84a25739a7c581759e3cbb8401` and `5182eb23c6102943cc5967e13120870930ba577309952de9756346943fcdf993`. Hashes of the stored PDF bytes matched the corresponding source fixtures exactly.
+
+### Root cause with runtime evidence
+
+`WireViewerScreen.kt` creates the renderer in `LaunchedEffect(file)`, then stores it in mutable Compose state. The cleanup effect is keyed by that state, but the cleanup closure reads the mutable state again when it runs:
+
+```kotlin
+DisposableEffect(renderer) {
+    onDispose { runCatching { renderer?.close() } }
+}
+```
+
+When the key changes from null to the newly opened renderer, disposal of the previous effect can read the updated state and close the just-created renderer. The replacement effect then holds a closed renderer. `renderPage` subsequently calls `renderer.openPage()` inside `runCatching { ... }.getOrNull()`; failure becomes a null bitmap, and `PdfPageImage` keeps showing `Rendering…` instead of an error. The catch hides the exact throwable class, but the premature-close condition is evidenced directly:
+
+- Logcat for the large fixture recorded native renderer creation on worker thread 15951 at 12:26:50.095, followed by deletion/destruction on the main thread (15923) at 12:26:50.110. A fresh re-import repeated creation on worker 15942 at 12:41:37.845 and destruction on main thread 15923 at 12:41:37.860. The two-page fixture showed the same pattern (12:36:29.380–12:36:29.392).
+- While each viewer remained on `Rendering…`, `top` showed the app sleeping at 0.0% CPU. The main thread stack was in `MessageQueue.nativePollOnce`/`Looper.loop`; all DefaultDispatcher workers were parked. This rules out a busy render loop and main-thread PDF rendering at the time of the hang.
+- App PSS was approximately 96 MB (RSS approximately 202 MB); Java heap allocation was about 5.5 MB and native heap about 10.4 MB. This is not evidence of bitmap-memory thrashing or OOM pressure.
+- The viewer continued to show a valid page count while rendering never completed. Tapping `Back to library` succeeded during the hang. The existing `HistoryAndWireLibraryComposeTest.missingPdfViewerShowsErrorAndRemoveRepairsRow` passes, confirming the missing-file removal/error route still works.
+
+Root cause is the `DisposableEffect(renderer)` capture/lifecycle race followed by a swallowed page-render exception and no failure state transition. Phase 1 changed no source or test files; this diagnosis is recorded before the fix.
