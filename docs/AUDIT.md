@@ -88,7 +88,7 @@ MainActivity
 | Circle divider | Implemented | `CircleDividerScreen`, `CircleDividerMath`, `CircleDividerDiagram`. N equal divisions, start angle, points/chord/arc/areas, optional bolt pattern. | `CircleDividerMathTest`; no gesture/UI test. |
 | Unit converter | Implemented | `UnitConverterScreen`, `ConverterCatalog`, `ConverterEngine`, `ConverterFormat`, `SheetMetalGauge`. Length, mass, temperature, pressure, force, torque, area, volume, angle, and gauge tables. Remembers unit pairs. | `ConverterMathTest`, `ConverterFormatTest`, `SheetMetalGaugeTest`; no UI/persistence test. |
 | Bend allowance / flat pattern | Implemented | `BendAllowanceScreen`, `BendAllowanceMath`, `BendDiagram`; multi-bend chain and leg-length cross-check. | `BendAllowanceMathTest`; no UI-state/validation test. |
-| Wire datasheet PDF library | Implemented | Tool menu → `WireLibraryScreen`, `WireDatasheetRepository`, Room entity/DAO, `WireLibraryFilter`, `WireViewerScreen`. OpenDocument picker, PDF header check/copy/hash, metadata tags, filters, viewer/pinch zoom, edit/delete. Local/offline. | Hash, duplicate, filter, size, migration-DDL JVM tests; 16-case emulator repository/filesystem/Room suite; Compose tests cover delete confirmation, import cancel/duplicate, and viewer missing-file recovery. |
+| Wire datasheet PDF library | Implemented | Tool menu → `WireLibraryScreen`, `WireDatasheetRepository`, Room entity/DAO, `WireLibraryFilter`, `WireViewerScreen`. OpenDocument picker, PDF header check/copy/hash, metadata tags, filters, viewer/pinch zoom, edit/delete. Local/offline. | Hash, duplicate, filter, size, migration-DDL JVM tests; 16-case emulator repository/filesystem/Room suite; Compose tests cover delete confirmation, import cancel/duplicate, viewer recovery, and large-fixture render. |
 | Calculation history | Implemented | History overlay via app bar/menu; `HistoryScreen`, `HistoryDetailDialog`, `HistoryRepository`, `HistoryDao`. Per-tool groups; detail; delete one or clear all. | In-memory Room repository tests and Compose tests for grouping/detail, single-delete confirmation, and clear-all confirmation. |
 | Settings | Implemented | Settings overlay → `SettingsScreen`, `SettingsRepository`, DataStore. Precision, unit availability, history toggle, theme, haptics, keep-awake. | Serialized preference round-trip, unknown enum/unit coercion, invalid-file defaults, repository recreation and sequential writes; no SettingsScreen UI tests. |
 | Welder display OCR | **Absent** | No OCR library/dependency, scanner route, camera component, or OCR code. | None. |
@@ -150,7 +150,7 @@ The current suite has 163 passing tests across 18 JVM test classes. The 8-test `
 | Test class/file | Purpose | Execution status |
 |---|---|---|
 | `ExampleInstrumentedTest` | Asserts target package name. | Emulator PASS (1 test). |
-| `HistoryAndWireLibraryComposeTest` | Compose UI tests for history deletion/clear confirmations, grouping/detail, wire deletion confirmation, viewer missing-PDF recovery, and PDF import cancel/duplicate. | Emulator PASS (6 tests); in-memory Room; no sleeps or ignored/flaky cases. |
+| `HistoryAndWireLibraryComposeTest` | Compose UI tests for history deletion/clear confirmations, grouping/detail, wire deletion confirmation, viewer missing-PDF recovery, PDF import cancel/duplicate, and large-fixture page render. | Emulator PASS (7 tests); in-memory Room; no sleeps or ignored/flaky cases. |
 | `WireDatabaseMigrationInstrumentedTest` | Builds a v2 SQLite database with a history row, opens through production migrations, verifies history preservation and wire-table insert/count on device. | Emulator PASS (1 test). |
 | `HistoryRepositoryInstrumentedTest` | In-memory Room tests for record/observe/find present+absent, equal-timestamp ordering, single delete, clear, and Flow updates. | Emulator PASS (3 tests). |
 | `SettingsRepositoryInstrumentedTest` | Real serialized DataStore round-trip, all settings fields, unknown enum/unit coercion, active-unit fallback, rapid writes, and unreadable-file IOException fallback. | Emulator PASS (2 tests). |
@@ -287,9 +287,9 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - WS-4 distinguishes delete rollback copies with `.staging-delete-<UUID>.pdf`; the startup sweep pattern covers both staging forms. The first pattern test caught an extra hyphen in the generated delete-backup name, which kept it outside the accepted pattern; the name construction was corrected and the expanded emulator case now passes for valid/malformed names plus reference and age gates. No migration changed.
 - After WS-4, emulator instrumented tests passed **22**, zero failures/errors/skips.
 - Approved decisions 1–3 and decision 4 passed the required suites; interim JVM counts from up-to-date task results are superseded by the fresh forced run. Decision 4 added the DataStore factory with the previous singleton factory as default plus a corrupt-file IOException test.
-- WS-5 adds six passing Compose UI tests using `createComposeRule`, in-memory Room, `waitForIdle`, and bounded `waitUntil`; none required quarantine. No production code or manifest was changed for UI tests.
+- WS-5 adds seven passing Compose UI tests using `createComposeRule`, in-memory Room, `waitForIdle`, and bounded `waitUntil`; none required quarantine. No production code or manifest was changed for UI tests.
 - WS-6 clarifies README test instructions: JVM tests need no device; instrumented/Compose tests require a booted emulator or connected device visible to `adb devices`. No feature claims or commands beyond the existing tasks were added.
-- A fresh non-cached CI-preparation run (`./gradlew :app:testDebugUnitTest --rerun-tasks`) generated 18 JUnit XML reports totaling **163 tests**, all passing. This supersedes every interim JVM count in prior overnight summaries. The connected suite has **29 tests**, all passing.
+- A fresh non-cached CI-preparation run (`./gradlew :app:testDebugUnitTest --rerun-tasks`) generated 18 JUnit XML reports totaling **163 tests**, all passing. This supersedes every interim JVM count in prior overnight summaries. The connected suite now has **30 tests**, all passing after adding the PDF viewer regression case.
 
 ### Deferred from this phase
 
@@ -334,4 +334,14 @@ When the key changes from null to the newly opened renderer, disposal of the pre
 - App PSS was approximately 96 MB (RSS approximately 202 MB); Java heap allocation was about 5.5 MB and native heap about 10.4 MB. This is not evidence of bitmap-memory thrashing or OOM pressure.
 - The viewer continued to show a valid page count while rendering never completed. Tapping `Back to library` succeeded during the hang. The existing `HistoryAndWireLibraryComposeTest.missingPdfViewerShowsErrorAndRemoveRepairsRow` passes, confirming the missing-file removal/error route still works.
 
-Root cause is the `DisposableEffect(renderer)` capture/lifecycle race followed by a swallowed page-render exception and no failure state transition. Phase 1 changed no source or test files; this diagnosis is recorded before the fix.
+Root cause was the `DisposableEffect(renderer)` capture/lifecycle race followed by a swallowed page-render exception and no failure state transition. Phase 1 changed no source or test files; this diagnosis was committed before the fix.
+
+### Phase 2 fix and test evidence
+
+- `WireViewerScreen` now snapshots `renderer` to `rendererToDispose` and keys cleanup on that stable value. The old null-keyed effect can no longer close the newly-created renderer during recomposition.
+- Page rendering still runs on `Dispatchers.IO`. `CancellationException` now propagates rather than being converted into a null result. Other page-render exceptions transition from Loading to a visible Failed state (`Could not render this page.`), so no exception leaves a permanent spinner.
+- Initial/page zoom rendering is dimension-capped at 2,048 px and area-capped at 6 MP per bitmap. The existing higher-resolution re-render after the zoom threshold remains, under those caps. The result bitmap is not an effect key, so its own output cannot re-trigger rendering.
+- `HistoryAndWireLibraryComposeTest.largeRealDatasheetFixtureRendersPageOne` uses the real 698,262-byte asset, default ContentResolver, Room-backed saved entry, and viewer UI. It failed before the fix after the 10-second page-image timeout; after the fix it rendered the page, kept Back available, and returned to the library when Back was tapped.
+- Measured page-1 tap-to-bitmap time: **234 ms** in the latest run (earlier passing runs: 201 ms and 250 ms) for `12_DW-50.pdf` on the API 36 emulator, from `WirePdfRegression` logcat. Post-fix PDFium log showed the document remained open through rendering and was destroyed on viewer disposal, rather than 15 ms after creation. No new dependency, migration, manifest entry, or network behavior was added.
+- Missing-PDF error/removal still passes `HistoryAndWireLibraryComposeTest.missingPdfViewerShowsErrorAndRemoveRepairsRow`.
+- Final connected suite now contains **30 tests**, all passing; no flaky test class was quarantined.

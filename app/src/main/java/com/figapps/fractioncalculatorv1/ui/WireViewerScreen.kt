@@ -58,10 +58,12 @@ import com.figapps.fractioncalculatorv1.domain.LengthUnit
 import com.figapps.fractioncalculatorv1.wire.WireDatasheet
 import com.figapps.fractioncalculatorv1.wire.WireSizes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * Bitmap cache for rendered pages. Sized to a fraction of the VM heap — a deliberate tradeoff:
@@ -69,6 +71,12 @@ import kotlin.math.roundToInt
  */
 private class PdfPageCache(maxBytes: Int) : LruCache<String, Bitmap>(maxBytes) {
     override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+}
+
+private sealed interface PdfPageRenderState {
+    data object Loading : PdfPageRenderState
+    data class Ready(val bitmap: Bitmap) : PdfPageRenderState
+    data object Failed : PdfPageRenderState
 }
 
 /**
@@ -102,8 +110,9 @@ fun WireViewerScreen(
         }
     }
 
-    DisposableEffect(renderer) {
-        onDispose { runCatching { renderer?.close() } }
+    val rendererToDispose = renderer
+    DisposableEffect(rendererToDispose) {
+        onDispose { runCatching { rendererToDispose?.close() } }
     }
 
     val mutex = remember { Mutex() }
@@ -273,28 +282,39 @@ private fun PdfPageImage(
     modifier: Modifier = Modifier,
 ) {
     val colors = CalcTheme.colors
-    val bitmap by produceState<Bitmap?>(initialValue = null, renderer, pageIndex, targetWidth) {
+    val pageState by produceState<PdfPageRenderState>(
+        initialValue = PdfPageRenderState.Loading,
+        renderer,
+        pageIndex,
+        targetWidth,
+    ) {
         val key = "$pageIndex@$targetWidth"
         val cached = cache.get(key)
         if (cached != null) {
-            value = cached
+            value = PdfPageRenderState.Ready(cached)
             return@produceState
         }
         val rendered = renderPage(renderer, pageIndex, targetWidth, mutex)
-        if (rendered != null) cache.put(key, rendered)
-        value = rendered
+        if (rendered == null) {
+            value = PdfPageRenderState.Failed
+        } else {
+            cache.put(key, rendered)
+            value = PdfPageRenderState.Ready(rendered)
+        }
     }
 
-    val image = bitmap
-    if (image == null) {
-        Text("Rendering\u2026", color = colors.numberKeyText.copy(alpha = 0.5f), fontSize = 13.sp)
-    } else {
-        Image(
-            bitmap = image.asImageBitmap(),
-            contentDescription = "Datasheet page ${pageIndex + 1}",
-            modifier = modifier.fillMaxSize().background(colors.cardBackground),
-            contentScale = ContentScale.Fit,
-        )
+    when (val state = pageState) {
+        PdfPageRenderState.Loading ->
+            Text("Rendering\u2026", color = colors.numberKeyText.copy(alpha = 0.5f), fontSize = 13.sp)
+        PdfPageRenderState.Failed ->
+            Text("Could not render this page.", color = colors.errorText, fontSize = 13.sp)
+        is PdfPageRenderState.Ready ->
+            Image(
+                bitmap = state.bitmap.asImageBitmap(),
+                contentDescription = "Datasheet page ${pageIndex + 1}",
+                modifier = modifier.fillMaxSize().background(colors.cardBackground),
+                contentScale = ContentScale.Fit,
+            )
     }
 }
 
@@ -306,18 +326,35 @@ private suspend fun renderPage(
     mutex: Mutex,
 ): Bitmap? = mutex.withLock {
     withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             renderer.openPage(pageIndex).use { page ->
-                val width = targetWidth.coerceAtLeast(1)
-                val height = (page.height * (targetWidth.toFloat() / page.width)).roundToInt().coerceAtLeast(1)
+                val requestedWidth = targetWidth.coerceIn(1, MAX_PAGE_BITMAP_DIMENSION)
+                val requestedHeight = (page.height.coerceAtLeast(1) *
+                    (requestedWidth.toFloat() / page.width.coerceAtLeast(1)))
+                    .roundToInt().coerceAtLeast(1)
+                val requestedPixels = requestedWidth.toLong() * requestedHeight
+                val pixelScale = if (requestedPixels > MAX_PAGE_BITMAP_PIXELS) {
+                    sqrt(MAX_PAGE_BITMAP_PIXELS.toDouble() / requestedPixels).toFloat()
+                } else {
+                    1f
+                }
+                val width = (requestedWidth * pixelScale).roundToInt().coerceAtLeast(1)
+                val height = (requestedHeight * pixelScale).roundToInt().coerceAtLeast(1)
                 Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
                     eraseColor(android.graphics.Color.WHITE)
                     page.render(this, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 }
             }
-        }.getOrNull()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
     }
 }
+
+private const val MAX_PAGE_BITMAP_DIMENSION = 2048
+private const val MAX_PAGE_BITMAP_PIXELS = 6_000_000L
 
 /** Fraction of the VM heap the page-bitmap cache may use. */
 private const val CACHE_HEAP_DIVISOR = 6

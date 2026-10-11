@@ -42,6 +42,8 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import android.os.SystemClock
+import android.util.Log
 import java.io.File
 import java.util.UUID
 
@@ -232,6 +234,38 @@ class HistoryAndWireLibraryComposeTest {
         assertNotNull(runBlocking { database.wireDatasheetDao().findById(existing.id) })
     }
 
+    @Test
+    fun largeRealDatasheetFixtureRendersPageOne() {
+        val source = copyPdfFixture("pdf-fixtures/12_DW-50.pdf", "${resultPrefix}-large.pdf")
+        val staged = runBlocking {
+            container.wireRepository.stagePdf(Uri.fromFile(source)) {} as WireStageResult.Staged
+        }
+        val entry = runBlocking {
+            container.wireRepository.commit(
+                staged.file,
+                staged.sha256,
+                WireTags(brand = "Kobelco", productName = "Renderer Fixture"),
+            )
+        }
+        setScreen { WireLibraryScreen(settings = AppSettings()) }
+        composeRule.waitForIdle()
+
+        val tapStarted = SystemClock.elapsedRealtime()
+        composeRule.onNodeWithText(entry.productName).performClick()
+        composeRule.onNodeWithContentDescription("Back to library").assertExists()
+        composeRule.waitUntil(10_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("Datasheet page 1").fetchSemanticsNode()
+            }.isSuccess
+        }
+        val elapsed = SystemClock.elapsedRealtime() - tapStarted
+        Log.i("WirePdfRegression", "fixture=12_DW-50.pdf page=1 renderMs=$elapsed")
+        assertTrue("page one must render within ten seconds (actual ${elapsed}ms)", elapsed < 10_000)
+        composeRule.onNodeWithContentDescription("Back to library").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(entry.productName).assertExists()
+    }
+
     private fun setScreen(
         registryOwner: RecordingRegistryOwner? = null,
         content: @Composable () -> Unit,
@@ -284,6 +318,15 @@ class HistoryAndWireLibraryComposeTest {
     private fun pdfSource(name: String): File = File(context.cacheDir, "$name.pdf").apply {
         writeBytes("%PDF-1.4\ncompose-test-$name\n%%EOF".toByteArray())
     }.also(sourceFiles::add)
+
+    private fun copyPdfFixture(assetName: String, outputName: String): File {
+        val output = File(context.cacheDir, outputName)
+        InstrumentationRegistry.getInstrumentation().context.assets.open(assetName).use { input ->
+            output.outputStream().use { input.copyTo(it) }
+        }
+        sourceFiles += output
+        return output
+    }
 
     private fun historyEntry(result: String, value: String, time: Long, tool: String = "Tool Test") = HistoryEntry(
         toolId = result,
