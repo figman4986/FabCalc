@@ -34,6 +34,7 @@ class SettingsRepositoryInstrumentedTest {
         val repository = SettingsRepository(base)
         val store = rawPreferences(repository)
         val settingsFile = File(File(base.filesDir, "datastore"), "settings.preferences_pb")
+        val originalPreferences = store.data.first()
         try {
             store.edit { prefs -> clearPreferences(prefs) }
             assertEquals(AppSettings(), repository.settings.first())
@@ -110,8 +111,7 @@ class SettingsRepositoryInstrumentedTest {
             assertEquals(ResultPrecision.DecimalRound(7), afterWrites.precision)
             assertTrue(settingsFile.length() > 0L)
         } finally {
-            // The existing app store was at defaults before these tests; restore that state.
-            store.edit { prefs -> clearPreferences(prefs) }
+            store.edit { prefs -> restorePreferences(prefs, originalPreferences) }
         }
     }
 
@@ -125,8 +125,18 @@ class SettingsRepositoryInstrumentedTest {
         preferences.asMap().keys.toList().forEach { key -> removePreference(preferences, key) }
     }
 
+    private fun restorePreferences(preferences: MutablePreferences, snapshot: Preferences) {
+        clearPreferences(preferences)
+        snapshot.asMap().forEach { (key, value) -> putPreference(preferences, key, value) }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun removePreference(preferences: MutablePreferences, key: Preferences.Key<*>) {
         preferences.remove(key as Preferences.Key<Any>)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun putPreference(preferences: MutablePreferences, key: Preferences.Key<*>, value: Any) {
+        preferences[key as Preferences.Key<Any>] = value
     }
 }
