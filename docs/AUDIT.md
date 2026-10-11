@@ -10,7 +10,7 @@ Method: direct inspection of Gradle files, manifest, source, resources, and test
 
 The repository contains one Android app module using Kotlin/Compose, manual dependency injection, Room for calculation history and wire datasheet metadata, and DataStore Preferences for settings. The Room database is schema version 3 with explicit migrations 1→2 and 2→3. No `fallbackToDestructiveMigration` call was found. The manifest declares a single exported launcher activity and no permissions, including no network permission. Source/dependencies show no networking client or network use.
 
-Baseline verification before corrections: `bash gradlew :app:testDebugUnitTest` completed `BUILD SUCCESSFUL`; generated reports show 128 tests, 0 failures, 0 errors, 0 skipped. `bash gradlew :app:connectedDebugAndroidTest` completed successfully with both instrumented classes passing (2 tests total), including v2→v3 migration and history preservation. `bash gradlew :app:assembleDebug` and `bash gradlew :app:assembleRelease` both passed. Although release emitted a warning that it would be unsigned, APK certificate inspection showed `app-release.apk` was signed by the Android Debug certificate (SHA-256 `fdbef4504ef89bbd37179aedbae1cbd62ff93cf5d223c14e5c9ef6c5c7ca94c4`).
+Baseline verification before corrections: JVM unit tests, connected instrumented tests (including v2→v3 migration/history preservation), and both debug/release assembly tasks completed successfully. Interim JVM test totals from those runs were later found stale; the fresh forced-run count is authoritative below. Although release emitted a warning that it would be unsigned, APK certificate inspection showed `app-release.apk` was signed by the Android Debug certificate (SHA-256 `fdbef4504ef89bbd37179aedbae1cbd62ff93cf5d223c14e5c9ef6c5c7ca94c4`).
 
 **Top five risks / decisions:**
 
@@ -143,7 +143,7 @@ No photo data exists in this FabCalc tree. An age-gated startup sweep now delete
 | `WireLibraryFilterTest` | 18 | Metal/process/search filtering, combined predicates, order and grouping. |
 | `WireSizeNormalizationTest` | 11 | Common/custom unit normalization, display, and round trips. |
 
-The original suite had 128 tests across 16 reports. WS-3 added six green JVM tests and the approved decision follow-ups add two tests (numerator-only implicit denominator and invalid-digit rejection), for 136 passing tests across 17 reports.
+The current suite has 163 passing tests across 18 JVM test classes. The 8-test `CalculatorViewModelTest` was added during the decision phase. This total comes from a forced fresh run and regenerated per-class XML, superseding interim overnight totals.
 
 ### Instrumented tests (6 files; emulator executed)
 
@@ -215,7 +215,7 @@ Once the correct source tree is available, first tests should prioritize Room en
 | Command | Result |
 |---|---|
 | `bash gradlew :app:connectedDebugAndroidTest` | **PASS**, 2 tests, 0 failures/errors/skips on an API 36 emulator. `ExampleInstrumentedTest.useAppContext` passed (1); `WireDatabaseMigrationInstrumentedTest.migration2To3_createsTheWireTableAndPreservesHistory` passed (1). |
-| `bash gradlew :app:testDebugUnitTest` | **PASS**, 128 tests, 0 failures/errors/skips (all 16 JVM reports). |
+| `bash gradlew :app:testDebugUnitTest` | **PASS**; interim report count was later superseded by the forced current count in section 9. |
 | `bash gradlew :app:assembleDebug` | **PASS**. |
 | `bash gradlew :app:assembleRelease` | **PASS, unsafe prior behavior found**: warning claimed unsigned, but `apksigner verify --print-certs` identified Android Debug signer SHA-256 `fdbef4504ef89bbd37179aedbae1cbd62ff93cf5d223c14e5c9ef6c5c7ca94c4`. Release fallback has been removed; now expects a clean configuration failure without credentials. |
 
@@ -229,7 +229,7 @@ The generated connected-test XML report records the two per-class results above.
 - `app/src/main/keepRules/rules.keep`: tracked TODO requires full instrumented suite green before considering R8, plus release smoke-test gate and preservation/upload of each `mapping.txt`.
 - `README.md`: contributor signing-secret setup for `local.properties`/environment, optional PKCS12 key password, and backup caveat.
 - `docs/AUDIT.md`: baseline results and backup verification status recorded.
-- Post-correction: `bash gradlew :app:testDebugUnitTest` passed with 128 tests and zero failures/errors/skips; `bash gradlew :app:connectedDebugAndroidTest` passed with 2 tests and zero failures/errors/skips; `bash gradlew :app:assembleDebug` passed. `bash gradlew :app:assembleRelease` now fails at configuration as intended without release credentials, naming the required settings. A signed release was later verified with the configured release certificate.
+- Post-correction JVM and connected suites passed; the interim JVM count was later superseded by the forced current count. `bash gradlew :app:assembleDebug` passed. `bash gradlew :app:assembleRelease` now fails at configuration as intended without release credentials, naming the required settings. A signed release was later verified with the configured release certificate.
 - Offline policy check after changes: no INTERNET permission or networking dependencies/clients were introduced; no Room migration code was changed.
 
 ### Backup verification attempt
@@ -275,22 +275,21 @@ Imports use exact `.staging-<UUID>.pdf` names; delete rollback copies use `.stag
 - `HistoryDatabase.exportSchema` is true; KSP writes to `app/schemas` via `room.schemaLocation`; the schema directory is configured as androidTest assets for migration tooling.
 - Generated snapshot: `app/schemas/com.figapps.fractioncalculatorv1.history.HistoryDatabase/3.json` (schema version 3; history and wire_datasheets entities and all four indices represented).
 - `app/src/main/java/com/figapps/fractioncalculatorv1/history/HistoryDatabase.kt` migration definitions were not modified. The final migration instrumented test passed after enabling schema export.
-- After WS-1, `bash gradlew :app:testDebugUnitTest` remained at **128 tests**; `bash gradlew :app:connectedDebugAndroidTest` passed **20 tests**, zero failures/errors/skips: Example (1), migration (1), history (3), wire repository (15).
+- After WS-1, connected Android tests passed **20 tests**, zero failures/errors/skips: Example (1), migration (1), history (3), wire repository (15). JVM task output at that interim checkpoint was up-to-date, so its count is not treated as authoritative.
 - WS-1 history coverage added in-memory Room instrumentation: 3 tests passed for insert/observe/find, equal-timestamp order, and delete/clear emissions. In-memory Room isolates test state while retaining actual DAO SQL and Room invalidation behavior.
 - WS-2 initially added one emulator integration scenario over the process-wide DataStore and documented the IO isolation blocker. Decision 4 then authorized a factory seam; the new isolated corrupt-file test exercises the IOException-to-defaults path. The default singleton factory remains the constructor default, and the existing default-path round-trip remains green.
-- After WS-2, JVM tests remained at **128** and emulator instrumented tests passed **21 tests**, zero failures/errors/skips.
+- After WS-2, emulator instrumented tests passed **21 tests**, zero failures/errors/skips.
 - WS-3 added six passing JVM calculator transition tests. Test-first probes found numerator-only input returns `3` (now approved as intended) and `Digit(12)` is accepted (still unresolved). No production behavior was changed.
-- After WS-3, JVM tests passed **134 tests** and connected Android tests passed **21 tests**, zero failures/errors/skips.
-- Decision 1 follow-up adds one JVM assertion for numerator-only → whole number and updates the stale `FractionInput.toFraction()` documentation; parser behavior already conformed. JVM suite became **135 tests**.
-- Decision 2 adds a JVM guard test and a single `0..9` handler check; invalid keys are ignored before operand state is modified. JVM suite is now **136 tests**.
+- After WS-3, connected Android tests passed **21 tests**, zero failures/errors/skips. JVM test totals in the interim notes are superseded by the fresh current report count.
+- Decision 1 follow-up adds one JVM assertion for numerator-only → whole number and updates the stale `FractionInput.toFraction()` documentation; parser behavior already conformed.
+- Decision 2 adds a JVM guard test and a single `0..9` handler check; invalid keys are ignored before operand state is modified.
 - Decision 3 adds `id DESC` as the history query tie-break; the existing equal-timestamp in-memory Room test asserts newer ID first. No schema or migration changed.
 - WS-4 distinguishes delete rollback copies with `.staging-delete-<UUID>.pdf`; the startup sweep pattern covers both staging forms. The first pattern test caught an extra hyphen in the generated delete-backup name, which kept it outside the accepted pattern; the name construction was corrected and the expanded emulator case now passes for valid/malformed names plus reference and age gates. No migration changed.
-- After WS-4, JVM tests remain **134** and emulator instrumented tests pass **22**, zero failures/errors/skips.
-- After approved decisions 1–2, JVM tests pass **136** and emulator instrumented tests remain **22**, zero failures/errors/skips.
-- Decision 3 post-commit counts were 136 JVM / 22 instrumented, all green. Decision 4 added the DataStore factory with the previous singleton factory as default plus a corrupt-file IOException test; post-commit total was 136 / 23.
+- After WS-4, emulator instrumented tests passed **22**, zero failures/errors/skips.
+- Approved decisions 1–3 and decision 4 passed the required suites; interim JVM counts from up-to-date task results are superseded by the fresh forced run. Decision 4 added the DataStore factory with the previous singleton factory as default plus a corrupt-file IOException test.
 - WS-5 adds six passing Compose UI tests using `createComposeRule`, in-memory Room, `waitForIdle`, and bounded `waitUntil`; none required quarantine. No production code or manifest was changed for UI tests.
 - WS-6 clarifies README test instructions: JVM tests need no device; instrumented/Compose tests require a booted emulator or connected device visible to `adb devices`. No feature claims or commands beyond the existing tasks were added.
-- A fresh non-cached CI-preparation run (`./gradlew :app:testDebugUnitTest --rerun-tasks`) generated 18 JUnit XML reports totaling **163 tests**, all passing. This supersedes the previously reported 136 total, which does not match the freshly regenerated report set. The connected suite remains **29 tests**, all passing.
+- A fresh non-cached CI-preparation run (`./gradlew :app:testDebugUnitTest --rerun-tasks`) generated 18 JUnit XML reports totaling **163 tests**, all passing. This supersedes every interim JVM count in prior overnight summaries. The connected suite has **29 tests**, all passing.
 
 ### Deferred from this phase
 
