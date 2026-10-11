@@ -3,6 +3,7 @@ package com.figapps.fractioncalculatorv1
 import com.figapps.fractioncalculatorv1.calculator.CalculatorKey
 import com.figapps.fractioncalculatorv1.calculator.ExprToken
 import com.figapps.fractioncalculatorv1.calculator.CalculatorViewModel
+import com.figapps.fractioncalculatorv1.calculator.FractionInput
 import com.figapps.fractioncalculatorv1.calculator.Field
 import com.figapps.fractioncalculatorv1.domain.Fraction
 import com.figapps.fractioncalculatorv1.domain.MathConstant
@@ -14,6 +15,11 @@ import org.junit.Test
 
 /** ViewModel transition tests run on JVM; no Android UI or lifecycle owner is required. */
 class CalculatorViewModelTest {
+
+    @Test
+    fun numeratorOnlyInputUsesImplicitDenominatorOne() {
+        assertEquals(Fraction.of(3L, 1L), FractionInput(numerator = "3").toFraction())
+    }
 
     @Test
     fun fractionEntryFocusAndPartialFieldsAreRepresented() {

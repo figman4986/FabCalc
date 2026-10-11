@@ -34,7 +34,7 @@ data class FractionInput(
         return parts.joinToString(" ")
     }
 
-    /** Converts the input to a fraction, or null when it is empty/incomplete/invalid. */
+    /** Converts the input to a fraction, or null when it is empty/invalid. A missing denominator is 1. */
     fun toFraction(): Fraction? {
         constant?.let { symbol ->
             return MathConstant.fromSymbol(symbol)?.value
