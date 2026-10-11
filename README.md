@@ -14,17 +14,25 @@ bash gradlew :app:assembleDebug
 
 ## Tests
 
-Run the JVM unit tests with:
+### JVM Unit Tests
+
+These tests run on the local JVM and do not require an emulator or connected device:
 
 ```bash
 bash gradlew :app:testDebugUnitTest
 ```
 
-With an emulator or Android device connected, run instrumented tests with:
+### Instrumented Tests
+
+These Android and Compose UI tests require a booted emulator or connected device visible in
+`adb devices`. With one target available, run:
 
 ```bash
 bash gradlew :app:connectedDebugAndroidTest
 ```
+
+If multiple targets are connected, select one with `ANDROID_SERIAL=<device-serial>` before invoking
+the command.
 
 ## Release signing
 
