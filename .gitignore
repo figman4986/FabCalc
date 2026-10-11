@@ -1,0 +1,33 @@
+local.properties
+
+# Gradle and Android build outputs
+.gradle/
+**/build/
+.externalNativeBuild/
+.cxx/
+/captures/
+/app/release/
+*.apk
+*.aab
+/docs/AUDIT.md
+
+# Signing keys and related secret material
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+**/*keystore*
+**/*key-store*
+
+# Android Studio state; keep only reusable project inspections/style rules
+.idea/*
+!.idea/codeStyles/
+!.idea/codeStyles/**
+!.idea/inspectionProfiles/
+!.idea/inspectionProfiles/**
+
+# OS files and unrelated local image
+.DS_Store
+/Tux.jpg
