@@ -1,7 +1,6 @@
 # FabCalc
 
-FabCalc is an offline shop-floor calculator with calculation history and a local welding-wire
-datasheet PDF library.
+FabCalc is a set of fabrication math tools and anything else i thought would be useful in my day to day. it is 100% coded with AI.
 
 ## Build from Source
 
